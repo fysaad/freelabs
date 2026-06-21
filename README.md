@@ -8,6 +8,7 @@ based on the Summer 2026 class schedule.
 ## Project Structure
 
 ```
+free-rooms-app/
 ├── app.py              ← Flask backend + API
 ├── index.html          ← Frontend (single-page, Tailwind CSS)
 ├── schedule.json       ← Parsed schedule data (4,568 entries, 177 rooms)
