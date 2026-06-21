@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BRACU Free Room Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 600: '#1d4ed8', 700: '#1e40af', 800: '#1e3a8a' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* ── Custom additions on top of Tailwind ── */
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+
+    .glass {
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* Animated gradient hero */
+    .hero-bg {
+      background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 40%, #0ea5e9 100%);
+      background-size: 400% 400%;
+      animation: gradientShift 8s ease infinite;
+    }
+    @keyframes gradientShift {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Room card hover lift */
+    .room-card {
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .room-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(29, 78, 216, 0.15);
+    }
+
+    /* Pulse loader */
+    .loader { display: none; }
+    .loader.active { display: flex; }
+
+    /* Fade-in for results */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp 0.3s ease forwards; }
+
+    /* Badge pulse on free */
+    @keyframes pop {
+      0%   { transform: scale(0.8); opacity: 0; }
+      60%  { transform: scale(1.05); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .badge-pop { animation: pop 0.25s ease forwards; }
+
+    /* Custom time input */
+    input[type="time"] {
+      -webkit-appearance: none;
+      background: white;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50">
+
+  <!-- ══════════════ HERO HEADER ══════════════ -->
+  <div class="hero-bg text-white py-12 px-4 shadow-xl">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="flex items-center justify-center gap-3 mb-3">
+        <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+        </svg>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight">BRACU Free Room Finder</h1>
+      </div>
+      <p class="text-blue-100 text-base md:text-lg max-w-xl mx-auto">
+        Find available classrooms &amp; labs instantly — Summer 2026 schedule
+      </p>
+      <!-- Stats bar -->
+      <div id="statsBar" class="mt-6 flex justify-center gap-6 text-sm text-blue-200">
+        <span id="statEntries">Loading…</span>
+        <span class="opacity-40">|</span>
+        <span id="statRooms">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ SEARCH CARD ══════════════ -->
+  <div class="max-w-4xl mx-auto px-4 -mt-6">
+    <div class="glass rounded-2xl shadow-2xl p-6 md:p-8 border border-white/60">
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <!-- Day Selector -->
+        <div>
+          <label class="block text-sm font-semibold text-slate-600 mb-1.5">
+            📅 Day
+          </label>
+          <select id="daySelect"
+            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800
+                   shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                   transition text-sm font-medium">
+            <option value="">— Select a day —</option>
+            <option value="SUNDAY">Sunday</option>
+            <option value="MONDAY">Monday</option>
+            <option value="TUESDAY">Tuesday</option>
+            <option value="WEDNESDAY">Wednesday</option>
+            <option value="THURSDAY">Thursday</option>
+            <option value="FRIDAY">Friday</option>
+            <option value="SATURDAY">Saturday</option>
+          </select>
+        </div>
+
+        <!-- Start Time -->
+        <div>
+          <label class="block text-sm font-semibold text-slate-600 mb-1.5">
+            🕐 From (Start Time)
+          </label>
+          <input id="startTime" type="time" value="08:00"
+            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800
+                   shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                   transition text-sm font-medium" />
+        </div>
+
+        <!-- End Time -->
+        <div>
+          <label class="block text-sm font-semibold text-slate-600 mb-1.5">
+            🕑 To (End Time)
+          </label>
+          <input id="endTime" type="time" value="09:20"
+            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800
+                   shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                   transition text-sm font-medium" />
+        </div>
+      </div>
+
+      <!-- Quick-fill buttons -->
+      <div class="mt-4 flex flex-wrap gap-2">
+        <span class="text-xs font-semibold text-slate-400 self-center mr-1">Quick slots:</span>
+        <button onclick="fillSlot('08:00','09:20')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          8:00–9:20
+        </button>
+        <button onclick="fillSlot('09:30','10:50')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          9:30–10:50
+        </button>
+        <button onclick="fillSlot('11:00','12:20')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          11:00–12:20
+        </button>
+        <button onclick="fillSlot('12:30','13:50')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          12:30–1:50
+        </button>
+        <button onclick="fillSlot('14:00','15:20')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          2:00–3:20
+        </button>
+        <button onclick="fillSlot('15:30','16:50')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          3:30–4:50
+        </button>
+        <button onclick="fillSlot('17:00','18:20')"
+          class="quick-btn px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700
+                 text-xs font-medium text-slate-600 transition border border-slate-200">
+          5:00–6:20
+        </button>
+      </div>
+
+      <!-- Search Button -->
+      <div class="mt-5 flex flex-col sm:flex-row gap-3">
+        <button id="searchBtn" onclick="findFreeRooms()"
+          class="flex-1 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white font-semibold
+                 py-3.5 px-8 rounded-xl shadow-lg shadow-blue-200 hover:shadow-blue-300
+                 transition-all duration-150 text-sm flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          Find Free Rooms
+        </button>
+        <button onclick="useNow()"
+          class="sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-semibold
+                 py-3.5 px-6 rounded-xl shadow-lg shadow-emerald-100 hover:shadow-emerald-200
+                 transition-all duration-150 text-sm flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Right Now
+        </button>
+      </div>
+
+      <!-- Filter / Sort bar (appears after results load) -->
+      <div id="filterBar" class="hidden mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-3 items-center">
+        <span class="text-xs font-semibold text-slate-400">Filter:</span>
+        <input id="roomFilter" type="text" placeholder="e.g. 09B or LAB" oninput="applyFilter()"
+          class="flex-1 min-w-[140px] rounded-lg border border-slate-200 px-3 py-1.5
+                 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        <select id="buildingFilter" onchange="applyFilter()"
+          class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700
+                 focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="">All buildings</option>
+        </select>
+        <button onclick="clearFilter()"
+          class="text-xs text-slate-400 hover:text-red-500 transition">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ LOADER ══════════════ -->
+  <div id="loader" class="loader items-center justify-center py-16">
+    <div class="text-center">
+      <div class="inline-flex gap-1.5">
+        <div class="w-3 h-3 rounded-full bg-blue-600 animate-bounce" style="animation-delay:0s"></div>
+        <div class="w-3 h-3 rounded-full bg-blue-500 animate-bounce" style="animation-delay:.15s"></div>
+        <div class="w-3 h-3 rounded-full bg-blue-400 animate-bounce" style="animation-delay:.3s"></div>
+      </div>
+      <p class="mt-3 text-sm text-slate-500">Scanning schedule…</p>
+    </div>
+  </div>
+
+  <!-- ══════════════ ERROR ══════════════ -->
+  <div id="errorBox" class="hidden max-w-4xl mx-auto px-4 mt-6">
+    <div class="rounded-xl bg-red-50 border border-red-200 px-5 py-4 flex gap-3 items-start">
+      <svg class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <p id="errorMsg" class="text-sm text-red-700 font-medium"></p>
+    </div>
+  </div>
+
+  <!-- ══════════════ RESULTS ══════════════ -->
+  <div id="results" class="hidden max-w-4xl mx-auto px-4 mt-6 pb-16">
+
+    <!-- Summary Banner -->
+    <div id="summaryBanner"
+      class="rounded-2xl bg-gradient-to-r from-blue-700 to-blue-600 text-white px-6 py-4
+             flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-blue-200 mb-6">
+      <div>
+        <p id="summaryTitle" class="text-lg font-bold"></p>
+        <p id="summarySubtitle" class="text-blue-200 text-sm"></p>
+      </div>
+      <div class="flex gap-4 text-center">
+        <div>
+          <div id="freeCount" class="text-3xl font-extrabold text-emerald-300"></div>
+          <div class="text-xs text-blue-200 font-medium">FREE</div>
+        </div>
+        <div class="w-px bg-blue-500"></div>
+        <div>
+          <div id="busyCount" class="text-3xl font-extrabold text-red-300"></div>
+          <div class="text-xs text-blue-200 font-medium">BUSY</div>
+        </div>
+        <div class="w-px bg-blue-500"></div>
+        <div>
+          <div id="totalCount" class="text-3xl font-extrabold text-blue-100"></div>
+          <div class="text-xs text-blue-200 font-medium">TOTAL</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Room Grid -->
+    <div id="roomGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+
+    <!-- No results placeholder -->
+    <div id="noResults" class="hidden text-center py-16">
+      <div class="text-5xl mb-4">😔</div>
+      <p class="text-slate-500 font-medium">No free rooms match your filter.</p>
+      <button onclick="clearFilter()" class="mt-3 text-sm text-blue-600 hover:underline">Clear filter</button>
+    </div>
+  </div>
+
+  <!-- ══════════════ ROOM DETAIL MODAL ══════════════ -->
+  <div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
+       onclick="closeModal(event)">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div class="relative glass rounded-2xl shadow-2xl w-full max-w-md border border-white/60 overflow-hidden">
+      <!-- Modal Header -->
+      <div class="bg-blue-700 text-white px-6 py-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold text-blue-300 uppercase tracking-wider">Room Details</p>
+          <h3 id="modalRoom" class="text-xl font-bold mt-0.5"></h3>
+        </div>
+        <button onclick="closeModal()" class="text-blue-200 hover:text-white transition text-2xl leading-none">&times;</button>
+      </div>
+      <!-- Modal Body -->
+      <div class="px-6 py-5">
+        <p id="modalDayLabel" class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3"></p>
+        <div id="modalSchedule" class="space-y-2"></div>
+        <div id="modalEmpty" class="hidden text-center py-8">
+          <div class="text-4xl mb-3">🎉</div>
+          <p class="text-slate-500 text-sm">No classes at all today — completely free!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ JAVASCRIPT ══════════════ -->
+  <script>
+  // ── State ────────────────────────────────────────────────────────────────
+  let lastData   = null;   // full API response
+  let allRooms   = [];     // enriched free rooms from last query
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  document.addEventListener("DOMContentLoaded", () => {
+    loadStats();
+    setTodayAndNow();
+  });
+
+  async function loadStats() {
+    try {
+      const r = await fetch("/api/stats");
+      const d = await r.json();
+      document.getElementById("statEntries").textContent =
+        `${d.total_entries.toLocaleString()} schedule entries`;
+      document.getElementById("statRooms").textContent =
+        `${d.total_rooms} unique rooms`;
+    } catch {}
+  }
+
+  function setTodayAndNow() {
+    const now  = new Date();
+    const days = ["SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"];
+    const today = days[now.getDay()];
+    const sel = document.getElementById("daySelect");
+    sel.value = today;
+
+    // Round to nearest 30-min slot
+    const h = now.getHours();
+    const m = now.getMinutes() < 30 ? "00" : "30";
+    const hh = String(h).padStart(2,"0");
+    document.getElementById("startTime").value = `${hh}:${m}`;
+    const endH = m === "30" ? h + 1 : h;
+    const endM = m === "30" ? "00" : "30";
+    document.getElementById("endTime").value =
+      `${String(endH).padStart(2,"0")}:${endM}`;
+  }
+
+  // ── Time helpers ─────────────────────────────────────────────────────────
+  function to12h(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    const period = h < 12 ? "AM" : "PM";
+    const hour   = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${String(hour).padStart(2,"0")}:${String(m).padStart(2,"0")} ${period}`;
+  }
+
+  function fillSlot(start, end) {
+    document.getElementById("startTime").value = start;
+    document.getElementById("endTime").value   = end;
+  }
+
+  function useNow() {
+    setTodayAndNow();
+    findFreeRooms();
+  }
+
+  // ── Main search ──────────────────────────────────────────────────────────
+  async function findFreeRooms() {
+    const day   = document.getElementById("daySelect").value;
+    const start = document.getElementById("startTime").value;
+    const end   = document.getElementById("endTime").value;
+
+    if (!day)   { showError("Please select a day."); return; }
+    if (!start) { showError("Please set a start time."); return; }
+    if (!end)   { showError("Please set an end time."); return; }
+    if (start >= end) { showError("Start time must be before end time."); return; }
+
+    const startStr = to12h(start);
+    const endStr   = to12h(end);
+
+    showLoader();
+    hideError();
+    document.getElementById("results").classList.add("hidden");
+    document.getElementById("filterBar").classList.add("hidden");
+
+    try {
+      const url = `/api/free-rooms?day=${encodeURIComponent(day)}&start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) { showError(data.error || "Server error"); return; }
+
+      lastData = data;
+      allRooms = data.free_rooms;
+
+      renderResults(data);
+      populateBuildingFilter(data.free_rooms);
+      document.getElementById("filterBar").classList.remove("hidden");
+
+    } catch (e) {
+      showError("Could not reach the server. Please try again.");
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function renderResults(data) {
+    // Summary banner
+    const day    = data.day[0] + data.day.slice(1).toLowerCase();
+    const start  = data.start;
+    const end    = data.end;
+    document.getElementById("summaryTitle").textContent =
+      `${day} · ${start} – ${end}`;
+    document.getElementById("summarySubtitle").textContent =
+      `${data.free_count} rooms available out of ${data.total_rooms} total`;
+    document.getElementById("freeCount").textContent  = data.free_count;
+    document.getElementById("busyCount").textContent  = data.busy_count;
+    document.getElementById("totalCount").textContent = data.total_rooms;
+
+    renderGrid(data.free_rooms, data.day);
+
+    document.getElementById("results").classList.remove("hidden");
+    document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderGrid(rooms, day) {
+    const grid = document.getElementById("roomGrid");
+    grid.innerHTML = "";
+    document.getElementById("noResults").classList.add("hidden");
+
+    if (rooms.length === 0) {
+      document.getElementById("noResults").classList.remove("hidden");
+      return;
+    }
+
+    rooms.forEach((item, i) => {
+      const card = document.createElement("div");
+      card.className = "room-card fade-up bg-white rounded-xl border border-emerald-100 p-4 cursor-pointer" +
+        " hover:border-blue-300 select-none";
+      card.style.animationDelay = `${Math.min(i * 20, 300)}ms`;
+      card.onclick = () => openModal(item.room, day);
+
+      const nextLabel = item.next_class
+        ? `<span class="text-xs text-slate-400 mt-1 block truncate">Next: ${item.next_class.course} @ ${item.next_class.start_time}</span>`
+        : `<span class="text-xs text-emerald-500 mt-1 block">Free all day</span>`;
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-1">
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-slate-800 text-sm truncate">${item.room}</div>
+            ${nextLabel}
+          </div>
+          <span class="badge-pop flex-shrink-0 w-2.5 h-2.5 rounded-full bg-emerald-400 mt-1"></span>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  // ── Filter ───────────────────────────────────────────────────────────────
+  function populateBuildingFilter(rooms) {
+    const buildings = [...new Set(rooms.map(r => r.room.split("-")[0]))].sort();
+    const sel = document.getElementById("buildingFilter");
+    sel.innerHTML = '<option value="">All buildings</option>';
+    buildings.forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b; opt.textContent = b;
+      sel.appendChild(opt);
+    });
+    // clear room filter
+    document.getElementById("roomFilter").value = "";
+  }
+
+  function applyFilter() {
+    if (!lastData) return;
+    const text  = document.getElementById("roomFilter").value.trim().toUpperCase();
+    const bldg  = document.getElementById("buildingFilter").value;
+
+    const filtered = allRooms.filter(r => {
+      const roomCode = r.room.toUpperCase();
+      const matchText = !text || roomCode.includes(text);
+      const matchBldg = !bldg || roomCode.startsWith(bldg);
+      return matchText && matchBldg;
+    });
+
+    renderGrid(filtered, lastData.day);
+  }
+
+  function clearFilter() {
+    document.getElementById("roomFilter").value = "";
+    document.getElementById("buildingFilter").value = "";
+    if (lastData) renderGrid(allRooms, lastData.day);
+  }
+
+  // ── Room Detail Modal ────────────────────────────────────────────────────
+  async function openModal(room, day) {
+    document.getElementById("modalRoom").textContent = room;
+    document.getElementById("modalDayLabel").textContent =
+      `Schedule for ${day[0]+day.slice(1).toLowerCase()}`;
+    document.getElementById("modalSchedule").innerHTML =
+      '<p class="text-slate-400 text-sm animate-pulse">Loading…</p>';
+    document.getElementById("modalEmpty").classList.add("hidden");
+    document.getElementById("modal").classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+
+    try {
+      const res  = await fetch(`/api/room-schedule?day=${encodeURIComponent(day)}&room=${encodeURIComponent(room)}`);
+      const data = await res.json();
+
+      const sched = document.getElementById("modalSchedule");
+      sched.innerHTML = "";
+
+      if (!data.classes || data.classes.length === 0) {
+        document.getElementById("modalEmpty").classList.remove("hidden");
+        return;
+      }
+
+      // Build the highlighted timeline
+      const queryStart = lastData ? to12hFrom24(document.getElementById("startTime").value) : "";
+      const queryEnd   = lastData ? to12hFrom24(document.getElementById("endTime").value)   : "";
+
+      data.classes.forEach(cls => {
+        const isInWindow = cls.start_time === queryStart;
+        const div = document.createElement("div");
+        div.className = `rounded-lg px-4 py-3 ${isInWindow
+          ? "bg-red-50 border border-red-200"
+          : "bg-slate-50 border border-slate-100"}`;
+        div.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <span class="font-bold text-sm ${isInWindow ? "text-red-700" : "text-slate-800"}">${cls.course}</span>
+              ${cls.faculty ? `<span class="text-xs text-slate-400 ml-1">· ${cls.faculty}</span>` : ""}
+              <p class="text-xs text-slate-500 mt-0.5">${cls.start_time} – ${cls.end_time}</p>
+            </div>
+            ${isInWindow
+              ? `<span class="text-xs font-semibold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Busy now</span>`
+              : ""}
+          </div>`;
+        sched.appendChild(div);
+      });
+    } catch {
+      document.getElementById("modalSchedule").innerHTML =
+        '<p class="text-red-500 text-sm">Failed to load schedule.</p>';
+    }
+  }
+
+  function closeModal(e) {
+    if (!e || e.target === document.getElementById("modal") || e.type === "click" && !e.target.closest(".relative")) {
+      document.getElementById("modal").classList.add("hidden");
+      document.body.style.overflow = "";
+    }
+  }
+
+  // ── Utilities ────────────────────────────────────────────────────────────
+  function to12hFrom24(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    const period = h < 12 ? "AM" : "PM";
+    const hour   = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${String(hour).padStart(2,"0")}:${String(m).padStart(2,"0")} ${period}`;
+  }
+
+  function showLoader() { document.getElementById("loader").classList.add("active"); }
+  function hideLoader() { document.getElementById("loader").classList.remove("active"); }
+
+  function showError(msg) {
+    document.getElementById("errorMsg").textContent = msg;
+    document.getElementById("errorBox").classList.remove("hidden");
+  }
+  function hideError() {
+    document.getElementById("errorBox").classList.add("hidden");
+  }
+
+  // Keyboard shortcut: Enter to search
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter" && document.getElementById("daySelect").value) findFreeRooms();
+    if (e.key === "Escape") closeModal();
+  });
+  </script>
+
+</body>
+</html>
